@@ -3,7 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#11191f">
     <title>Grocery List</title>
+    <link rel="manifest" href="manifest.json">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
     <style>
         body {
@@ -96,6 +98,14 @@
         #groceryList {
             margin-top: 1rem;
         }
+
+        .footer-note {
+            margin-top: 3rem;
+            padding-top: 2rem;
+            text-align: center;
+            font-size: 0.75rem;
+            opacity: 0.6;
+        }
     </style>
 </head>
 <body>
@@ -113,6 +123,10 @@
         </div>
 
         <div id="groceryList"></div>
+
+        <div class="footer-note">
+            Data stored locally in browser, may be lost on updates or cache clearing.
+        </div>
     </main>
 
     <script>
@@ -303,6 +317,11 @@
         loadData();
         updateGroupSelect();
         render();
+
+        // Register service worker for PWA support
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('sw.js');
+        }
     </script>
 </body>
 </html>
