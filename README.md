@@ -13,16 +13,9 @@ A minimal, mobile-friendly grocery list webapp with dark mode and store grouping
 
 ## Usage
 
-Open `index.html` in a browser or deploy to GitHub Pages.
+Open `index.html` in a browser or [open the corresponding GitHub Page](https://nestordemeure.github.io/grocery-list).
 
-- **Add item**: Type and press Enter
-- **Assign store**: Click the 🏷️ icon to select a store
-- **Check off**: Click checkbox to mark purchased
+- **Add item**: Type item name and press Enter
+- **Assign store**: Click the 🏷️ icon to optionally select a store
+- **Check off**: Click checkbox to mark as purchased
 - **Clear**: Click 🛒 to remove all checked items
-
-## Deployment
-
-```bash
-# Enable GitHub Pages in repo settings, select main branch
-# Visit: https://nestordemeure.github.io/grocery-list
-```
