@@ -115,12 +115,12 @@
             <button id="clearBtn" title="Clear Checked Items">🛒</button>
         </div>
 
-        <div class="input-row">
+        <form class="input-row" id="addItemForm">
             <input type="text" id="newItemInput" placeholder="Click to add new item..." />
             <select id="groupSelect">
                 <option value="">🏷️</option>
             </select>
-        </div>
+        </form>
 
         <div id="groceryList"></div>
 
@@ -299,14 +299,13 @@
         // Event listeners
         document.getElementById('newItemInput').addEventListener('input', checkItemMemory);
 
-        document.getElementById('newItemInput').addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') {
-                const input = e.target;
-                const groupSelect = document.getElementById('groupSelect');
-                addItem(input.value, groupSelect.value);
-                input.value = '';
-                groupSelect.value = ''; // Reset group selection
-            }
+        document.getElementById('addItemForm').addEventListener('submit', (e) => {
+            e.preventDefault();
+            const input = document.getElementById('newItemInput');
+            const groupSelect = document.getElementById('groupSelect');
+            addItem(input.value, groupSelect.value);
+            input.value = '';
+            groupSelect.value = ''; // Reset group selection
         });
 
         document.getElementById('groupSelect').addEventListener('change', handleGroupSelect);
