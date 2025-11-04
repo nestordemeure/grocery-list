@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Grocery List</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
+    <style>
+        body {
+            padding: 2rem;
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        .input-row {
+            display: flex;
+            gap: 0.5rem;
+            margin-bottom: 2rem;
+        }
+
+        .input-row input[type="text"] {
+            flex: 1;
+            margin-bottom: 0;
+        }
+
+        .input-row select {
+            width: 3rem;
+            margin-bottom: 0;
+            padding: 0.5rem;
+            text-align: center;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .input-row select option {
+            text-align: left;
+        }
+
+        .grocery-item {
+            display: flex;
+            align-items: center;
+            padding: 0.75rem;
+            margin-bottom: 0.5rem;
+            background: var(--pico-card-background-color);
+            border-radius: var(--pico-border-radius);
+            gap: 0.75rem;
+        }
+
+        .grocery-item input[type="checkbox"] {
+            margin: 0;
+            flex-shrink: 0;
+        }
+
+        .grocery-item label {
+            flex: 1;
+            margin: 0;
+            cursor: pointer;
+            user-select: none;
+        }
+
+        .grocery-item.checked label {
+            text-decoration: line-through;
+            opacity: 0.6;
+        }
+
+        .group-label {
+            padding: 0.25rem 0.75rem;
+            border-radius: 1rem;
+            font-size: 0.875rem;
+            font-weight: 500;
+            flex-shrink: 0;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 2rem;
+        }
+
+        .header h1 {
+            margin: 0;
+        }
+
+        .header button {
+            margin: 0;
+            width: 3rem;
+            height: 3rem;
+            padding: 0;
+            font-size: 1.5rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        #groceryList {
+            margin-top: 1rem;
+        }
+    </style>
+</head>
+<body>
+    <main>
+        <div class="header">
+            <h1>Grocery List</h1>
+            <button id="clearBtn" title="Clear Checked Items">🛒</button>
+        </div>
+
+        <div class="input-row">
+            <input type="text" id="newItemInput" placeholder="Click to add new item..." />
+            <select id="groupSelect">
+                <option value="">🏷️</option>
+            </select>
+        </div>
+
+        <div id="groceryList"></div>
+    </main>
+
+    <script>
+        // Default groups with colors
+        const defaultGroups = [
+            { name: 'Whole Foods', color: '#4CAF50' },
+            { name: 'Trader Joe\'s', color: '#FF5722' },
+            { name: 'Indian Store', color: '#FF9800' }
+        ];
+
+        // State
+        let items = [];
+        let groups = [];
+        let itemMemory = {}; // Maps item text (lowercase) to group index
+
+        // Load from localStorage
+        function loadData() {
+            const savedItems = localStorage.getItem('groceryItems');
+            const savedGroups = localStorage.getItem('groceryGroups');
+            const savedMemory = localStorage.getItem('itemMemory');
+
+            items = savedItems ? JSON.parse(savedItems) : [];
+            groups = savedGroups ? JSON.parse(savedGroups) : defaultGroups;
+            itemMemory = savedMemory ? JSON.parse(savedMemory) : {};
+        }
+
+        // Save to localStorage
+        function saveData() {
+            localStorage.setItem('groceryItems', JSON.stringify(items));
+            localStorage.setItem('groceryGroups', JSON.stringify(groups));
+            localStorage.setItem('itemMemory', JSON.stringify(itemMemory));
+        }
+
+        // Generate a random color for new groups
+        function getRandomColor() {
+            const colors = ['#E91E63', '#9C27B0', '#673AB7', '#3F51B5', '#2196F3',
+                          '#00BCD4', '#009688', '#4CAF50', '#8BC34A', '#CDDC39',
+                          '#FFC107', '#FF9800', '#FF5722', '#795548'];
+
+            // Get colors that are already in use
+            const usedColors = groups.map(g => g.color);
+
+            // Filter out used colors
+            const availableColors = colors.filter(c => !usedColors.includes(c));
+
+            // If there are available colors, pick from those; otherwise pick any
+            const colorPool = availableColors.length > 0 ? availableColors : colors;
+            return colorPool[Math.floor(Math.random() * colorPool.length)];
+        }
+
+        // Update group dropdown
+        function updateGroupSelect() {
+            const select = document.getElementById('groupSelect');
+            select.innerHTML = '<option value="">🏷️</option>';
+
+            groups.forEach((group, index) => {
+                const option = document.createElement('option');
+                option.value = index;
+                option.textContent = `● ${group.name}`;
+                option.style.color = group.color;
+                select.appendChild(option);
+            });
+
+            const newGroupOption = document.createElement('option');
+            newGroupOption.value = 'new';
+            newGroupOption.textContent = '+ Create new group';
+            select.appendChild(newGroupOption);
+        }
+
+        // Render items
+        function render() {
+            const list = document.getElementById('groceryList');
+            list.innerHTML = '';
+
+            items.forEach((item, index) => {
+                const div = document.createElement('div');
+                div.className = `grocery-item ${item.checked ? 'checked' : ''}`;
+
+                const checkbox = document.createElement('input');
+                checkbox.type = 'checkbox';
+                checkbox.checked = item.checked;
+                checkbox.id = `item-${index}`;
+                checkbox.addEventListener('change', () => toggleItem(index));
+
+                const label = document.createElement('label');
+                label.htmlFor = `item-${index}`;
+                label.textContent = item.text;
+
+                div.appendChild(checkbox);
+                div.appendChild(label);
+
+                if (item.group !== null && item.group !== undefined && groups[item.group]) {
+                    const groupLabel = document.createElement('span');
+                    groupLabel.className = 'group-label';
+                    groupLabel.textContent = groups[item.group].name;
+                    groupLabel.style.backgroundColor = groups[item.group].color;
+                    groupLabel.style.color = '#fff';
+                    div.appendChild(groupLabel);
+                }
+
+                list.appendChild(div);
+            });
+        }
+
+        // Add new item
+        function addItem(text, groupIndex) {
+            if (!text.trim()) return;
+
+            const groupValue = groupIndex !== '' ? parseInt(groupIndex) : null;
+            const item = {
+                text: text.trim(),
+                checked: false,
+                group: groupValue
+            };
+
+            // Remember this item's group for future use
+            if (groupValue !== null) {
+                itemMemory[text.trim().toLowerCase()] = groupValue;
+            }
+
+            items.unshift(item); // Add to top
+            saveData();
+            render();
+        }
+
+        // Toggle item checked state
+        function toggleItem(index) {
+            items[index].checked = !items[index].checked;
+            saveData();
+            render();
+        }
+
+        // Clear checked items
+        function clearChecked() {
+            items = items.filter(item => !item.checked);
+            saveData();
+            render();
+        }
+
+        // Handle new group creation
+        function handleGroupSelect() {
+            const select = document.getElementById('groupSelect');
+            if (select.value === 'new') {
+                const groupName = prompt('Enter new group name:');
+                if (groupName && groupName.trim()) {
+                    groups.push({
+                        name: groupName.trim(),
+                        color: getRandomColor()
+                    });
+                    saveData();
+                    updateGroupSelect();
+                    select.value = groups.length - 1; // Select the newly created group
+                } else {
+                    select.value = ''; // Reset to "No group"
+                }
+            }
+        }
+
+        // Auto-select group based on item memory
+        function checkItemMemory() {
+            const input = document.getElementById('newItemInput');
+            const groupSelect = document.getElementById('groupSelect');
+            const text = input.value.trim().toLowerCase();
+
+            if (text && itemMemory[text] !== undefined) {
+                groupSelect.value = itemMemory[text];
+            }
+        }
+
+        // Event listeners
+        document.getElementById('newItemInput').addEventListener('input', checkItemMemory);
+
+        document.getElementById('newItemInput').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                const input = e.target;
+                const groupSelect = document.getElementById('groupSelect');
+                addItem(input.value, groupSelect.value);
+                input.value = '';
+                groupSelect.value = ''; // Reset group selection
+            }
+        });
+
+        document.getElementById('groupSelect').addEventListener('change', handleGroupSelect);
+
+        document.getElementById('clearBtn').addEventListener('click', clearChecked);
+
+        // Initialize
+        loadData();
+        updateGroupSelect();
+        render();
+    </script>
+</body>
+</html>
