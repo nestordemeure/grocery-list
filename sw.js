@@ -1,7 +1,9 @@
-const CACHE_NAME = 'grocery-list-v1.1';
+const CACHE_NAME = 'grocery-list-v1.2';
 const urlsToCache = [
   '/grocery-list/',
-  '/grocery-list/index.html'
+  '/grocery-list/index.html',
+  '/grocery-list/style.css',
+  '/grocery-list/app.js'
 ];
 
 // Install service worker and cache files
