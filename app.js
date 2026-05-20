@@ -64,6 +64,89 @@ function updateGroupSelect() {
     select.appendChild(newGroupOption);
 }
 
+// Close any open group dropdown
+function closeDropdowns() {
+    document.querySelectorAll('.group-dropdown').forEach(d => d.remove());
+}
+
+// Build the group dropdown for an item
+function showGroupDropdown(itemIndex, wrapper) {
+    closeDropdowns();
+
+    const dropdown = document.createElement('div');
+    dropdown.className = 'group-dropdown';
+
+    // "No group" option
+    const noGroup = document.createElement('button');
+    noGroup.className = 'group-dropdown-item';
+    const noGroupDot = document.createElement('span');
+    noGroupDot.className = 'bullet-dot';
+    noGroupDot.style.backgroundColor = '#888';
+    noGroup.appendChild(noGroupDot);
+    noGroup.appendChild(document.createTextNode('No group'));
+    noGroup.addEventListener('click', (e) => {
+        e.stopPropagation();
+        changeItemGroup(itemIndex, null);
+    });
+    dropdown.appendChild(noGroup);
+
+    // Group options
+    groups.forEach((group, gi) => {
+        const btn = document.createElement('button');
+        btn.className = 'group-dropdown-item';
+        const dot = document.createElement('span');
+        dot.className = 'bullet-dot';
+        dot.style.backgroundColor = group.color;
+        btn.appendChild(dot);
+        btn.appendChild(document.createTextNode(group.name));
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            changeItemGroup(itemIndex, gi);
+        });
+        dropdown.appendChild(btn);
+    });
+
+    // "Create new group" option
+    const newGroup = document.createElement('button');
+    newGroup.className = 'group-dropdown-item';
+    newGroup.textContent = '+ New group';
+    newGroup.addEventListener('click', (e) => {
+        e.stopPropagation();
+        closeDropdowns();
+        const groupName = prompt('Enter new group name:');
+        if (groupName && groupName.trim()) {
+            groups.push({ name: groupName.trim(), color: getRandomColor() });
+            saveData();
+            updateGroupSelect();
+            changeItemGroup(itemIndex, groups.length - 1);
+        }
+    });
+    dropdown.appendChild(newGroup);
+
+    wrapper.appendChild(dropdown);
+
+    // Close on outside click (one-time listener)
+    setTimeout(() => {
+        document.addEventListener('click', function handler(e) {
+            if (!wrapper.contains(e.target)) {
+                closeDropdowns();
+                document.removeEventListener('click', handler);
+            }
+        });
+    }, 0);
+}
+
+// Change an item's group
+function changeItemGroup(itemIndex, groupValue) {
+    items[itemIndex].group = groupValue;
+    if (groupValue !== null) {
+        itemMemory[items[itemIndex].text.trim().toLowerCase()] = groupValue;
+    }
+    saveData();
+    closeDropdowns();
+    render();
+}
+
 // Render items
 function render() {
     const list = document.getElementById('groceryList');
@@ -83,17 +166,31 @@ function render() {
         label.htmlFor = `item-${index}`;
         label.textContent = item.text;
 
+        // Always show a group bullet
+        const wrapper = document.createElement('div');
+        wrapper.className = 'group-bullet-wrapper';
+
+        const bullet = document.createElement('button');
+        bullet.className = 'group-bullet';
+        const hasGroup = item.group !== null && item.group !== undefined && groups[item.group];
+        bullet.style.backgroundColor = hasGroup ? groups[item.group].color : '#888';
+        bullet.textContent = hasGroup ? groups[item.group].name : '\u00A0\u00A0\u00A0';
+        bullet.title = hasGroup ? groups[item.group].name : 'No group';
+        bullet.addEventListener('click', (e) => {
+            e.stopPropagation();
+            // Toggle: close if already open, otherwise open
+            if (wrapper.querySelector('.group-dropdown')) {
+                closeDropdowns();
+            } else {
+                showGroupDropdown(index, wrapper);
+            }
+        });
+
+        wrapper.appendChild(bullet);
+
         div.appendChild(checkbox);
         div.appendChild(label);
-
-        if (item.group !== null && item.group !== undefined && groups[item.group]) {
-            const groupLabel = document.createElement('span');
-            groupLabel.className = 'group-label';
-            groupLabel.textContent = groups[item.group].name;
-            groupLabel.style.backgroundColor = groups[item.group].color;
-            groupLabel.style.color = '#fff';
-            div.appendChild(groupLabel);
-        }
+        div.appendChild(wrapper);
 
         list.appendChild(div);
     });
