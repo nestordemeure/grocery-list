@@ -16,13 +16,16 @@
             <button id="clearBtn" title="Clear Checked Items">🛒</button>
         </div>
 
-        <form class="input-row" id="addItemForm">
-            <input type="text" id="newItemInput" placeholder="Click to add new item..." enterkeyhint="go" />
-            <select id="groupSelect">
-                <option value="">🏷️</option>
-            </select>
-            <button type="submit" style="display: none;"></button>
-        </form>
+        <div class="input-row-wrapper">
+            <form class="input-row" id="addItemForm">
+                <input type="text" id="newItemInput" placeholder="Click to add new item..." enterkeyhint="go" autocomplete="off" />
+                <select id="groupSelect">
+                    <option value="">🏷️</option>
+                </select>
+                <button type="submit" style="display: none;"></button>
+            </form>
+            <div id="autocompleteDropdown" class="autocomplete-dropdown" style="display: none;"></div>
+        </div>
 
         <div id="groceryList"></div>
 

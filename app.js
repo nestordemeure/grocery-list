@@ -261,13 +261,157 @@ function checkItemMemory() {
     }
 }
 
+// Fuzzy matching: score how well a query matches a candidate
+// Returns 0 or negative if no meaningful match
+function fuzzyScore(query, candidate) {
+    const q = query.toLowerCase();
+    const c = candidate.toLowerCase();
+
+    if (c === q) return 0; // exact match = already fully typed, skip
+
+    let score = 0;
+    let ci = 0;
+    let matched = 0;
+    let prevMatchIdx = -2;
+
+    for (let qi = 0; qi < q.length; qi++) {
+        const idx = c.indexOf(q[qi], ci);
+        if (idx !== -1) {
+            matched++;
+            score += 1;
+            // Consecutive character bonus
+            if (idx === prevMatchIdx + 1) score += 3;
+            // Same-position bonus
+            if (idx === qi) score += 1;
+            prevMatchIdx = idx;
+            ci = idx + 1;
+        }
+    }
+
+    if (matched === 0) return 0;
+
+    // Strong prefix bonus
+    if (c.startsWith(q)) score += q.length * 5;
+
+    // Slight preference for shorter (closer-length) candidates
+    score -= Math.abs(c.length - q.length) * 0.1;
+
+    return score;
+}
+
+// Autocomplete: show suggestions from known items
+let autocompleteIndex = -1;
+
+function updateAutocomplete() {
+    const input = document.getElementById('newItemInput');
+    const dropdown = document.getElementById('autocompleteDropdown');
+    const text = input.value.trim().toLowerCase();
+
+    if (!text) {
+        dropdown.style.display = 'none';
+        autocompleteIndex = -1;
+        return;
+    }
+
+    // Fuzzy match known items, sorted by score (best first)
+    const matches = Object.keys(itemMemory)
+        .map(key => ({ key, score: fuzzyScore(text, key) }))
+        .filter(m => m.score > 0)
+        .sort((a, b) => b.score - a.score)
+        .slice(0, 6)
+        .map(m => m.key);
+
+    if (matches.length === 0) {
+        dropdown.style.display = 'none';
+        autocompleteIndex = -1;
+        return;
+    }
+
+    dropdown.innerHTML = '';
+    autocompleteIndex = -1;
+
+    matches.forEach((key) => {
+        const btn = document.createElement('button');
+        btn.className = 'autocomplete-item';
+
+        // Show group color dot if item has a remembered group
+        const groupIdx = itemMemory[key];
+        if (groupIdx !== undefined && groups[groupIdx]) {
+            const dot = document.createElement('span');
+            dot.className = 'bullet-dot';
+            dot.style.backgroundColor = groups[groupIdx].color;
+            btn.appendChild(dot);
+        }
+
+        // Capitalize first letter for display
+        const displayText = key.charAt(0).toUpperCase() + key.slice(1);
+        btn.appendChild(document.createTextNode(displayText));
+
+        btn.addEventListener('mousedown', (e) => {
+            e.preventDefault(); // Prevent input blur
+            selectAutocomplete(displayText, groupIdx);
+        });
+
+        dropdown.appendChild(btn);
+    });
+
+    dropdown.style.display = 'block';
+}
+
+function selectAutocomplete(text, groupIdx) {
+    const input = document.getElementById('newItemInput');
+    const groupSelect = document.getElementById('groupSelect');
+    const dropdown = document.getElementById('autocompleteDropdown');
+
+    input.value = text;
+    if (groupIdx !== undefined) {
+        groupSelect.value = groupIdx;
+    }
+    dropdown.style.display = 'none';
+    autocompleteIndex = -1;
+    input.focus();
+}
+
+// Keyboard navigation for autocomplete
+function handleAutocompleteKeys(e) {
+    const dropdown = document.getElementById('autocompleteDropdown');
+    if (dropdown.style.display === 'none') return;
+
+    const items = dropdown.querySelectorAll('.autocomplete-item');
+    if (items.length === 0) return;
+
+    if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        autocompleteIndex = Math.min(autocompleteIndex + 1, items.length - 1);
+        items.forEach((el, i) => el.classList.toggle('selected', i === autocompleteIndex));
+    } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        autocompleteIndex = Math.max(autocompleteIndex - 1, 0);
+        items.forEach((el, i) => el.classList.toggle('selected', i === autocompleteIndex));
+    } else if (e.key === 'Enter' && autocompleteIndex >= 0) {
+        e.preventDefault();
+        items[autocompleteIndex].dispatchEvent(new MouseEvent('mousedown'));
+    }
+}
+
 // Event listeners
-document.getElementById('newItemInput').addEventListener('input', checkItemMemory);
+document.getElementById('newItemInput').addEventListener('input', () => {
+    checkItemMemory();
+    updateAutocomplete();
+});
+
+document.getElementById('newItemInput').addEventListener('keydown', handleAutocompleteKeys);
+
+document.getElementById('newItemInput').addEventListener('blur', () => {
+    document.getElementById('autocompleteDropdown').style.display = 'none';
+    autocompleteIndex = -1;
+});
 
 document.getElementById('addItemForm').addEventListener('submit', (e) => {
     e.preventDefault();
     const input = document.getElementById('newItemInput');
     const groupSelect = document.getElementById('groupSelect');
+    document.getElementById('autocompleteDropdown').style.display = 'none';
     addItem(input.value, groupSelect.value);
     input.value = '';
     groupSelect.value = ''; // Reset group selection
