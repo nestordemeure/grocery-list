@@ -48,6 +48,7 @@ body {
     margin: 0;
     cursor: pointer;
     user-select: none;
+    text-transform: capitalize;
 }
 
 .grocery-item.checked label {
