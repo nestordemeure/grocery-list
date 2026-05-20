@@ -10,6 +10,7 @@ const urlsToCache = [
 
 // Install service worker and cache files
 self.addEventListener('install', event => {
+  self.skipWaiting();
   event.waitUntil(
     caches.open(CACHE_NAME)
       .then(cache => cache.addAll(urlsToCache))
