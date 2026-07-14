@@ -1,7 +1,73 @@
+/* Self-contained dark theme (replaces the Pico CSS CDN dependency) */
+:root {
+    --bg: #11191f;
+    --card: #1a232c;
+    --border: #33444f;
+    --text: #dce3e8;
+    --muted: #8a99a8;
+    --primary: #1095c1;
+    --primary-focus: rgba(16, 149, 193, 0.3);
+    --radius: 0.4rem;
+}
+
+* {
+    box-sizing: border-box;
+}
+
+html {
+    -webkit-text-size-adjust: 100%;
+}
+
 body {
+    margin: 0 auto;
     padding: 2rem;
     max-width: 800px;
-    margin: 0 auto;
+    background: var(--bg);
+    color: var(--text);
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    line-height: 1.5;
+}
+
+h1 {
+    font-size: 1.75rem;
+    font-weight: 700;
+}
+
+input[type="text"],
+select {
+    font: inherit;
+    color: var(--text);
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 0.6rem 0.9rem;
+    outline: none;
+}
+
+input[type="text"]::placeholder {
+    color: var(--muted);
+}
+
+input[type="text"]:focus,
+select:focus {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px var(--primary-focus);
+}
+
+button {
+    font: inherit;
+    cursor: pointer;
+    border: none;
+    border-radius: var(--radius);
+    background: none;
+    color: inherit;
+}
+
+input[type="checkbox"] {
+    width: 1.25rem;
+    height: 1.25rem;
+    accent-color: var(--primary);
+    cursor: pointer;
 }
 
 .input-row {
@@ -12,6 +78,7 @@ body {
 
 .input-row input[type="text"] {
     flex: 1;
+    min-width: 0;
     margin-bottom: 0;
 }
 
@@ -33,8 +100,8 @@ body {
     align-items: center;
     padding: 0.75rem;
     margin-bottom: 0.5rem;
-    background: var(--pico-card-background-color);
-    border-radius: var(--pico-border-radius);
+    background: var(--card);
+    border-radius: var(--radius);
     gap: 0.75rem;
 }
 
@@ -78,9 +145,9 @@ body {
     right: 0;
     top: 100%;
     margin-top: 0.25rem;
-    background: var(--pico-card-background-color);
-    border: 1px solid var(--pico-muted-border-color);
-    border-radius: var(--pico-border-radius);
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
     padding: 0.25rem 0;
     z-index: 100;
     min-width: 10rem;
@@ -97,13 +164,13 @@ body {
     font-size: 0.875rem;
     border: none;
     background: none;
-    color: var(--pico-color);
+    color: var(--text);
     width: 100%;
     text-align: left;
 }
 
 .group-dropdown-item:hover {
-    background: var(--pico-primary-focus);
+    background: var(--primary-focus);
 }
 
 .group-dropdown-item .bullet-dot {
@@ -123,9 +190,9 @@ body {
     top: 100%;
     left: 0;
     right: 0;
-    background: var(--pico-card-background-color);
-    border: 1px solid var(--pico-muted-border-color);
-    border-radius: var(--pico-border-radius);
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
     margin-top: 0.25rem;
     z-index: 100;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
@@ -142,14 +209,14 @@ body {
     font-size: 0.9rem;
     border: none;
     background: none;
-    color: var(--pico-color);
+    color: var(--text);
     width: 100%;
     text-align: left;
 }
 
 .autocomplete-item:hover,
 .autocomplete-item.selected {
-    background: var(--pico-primary-focus);
+    background: var(--primary-focus);
 }
 
 .autocomplete-item .bullet-dot {
@@ -179,6 +246,7 @@ body {
     display: flex;
     align-items: center;
     justify-content: center;
+    background: var(--primary);
 }
 
 #groceryList {

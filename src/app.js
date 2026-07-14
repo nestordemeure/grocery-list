@@ -8,7 +8,28 @@ const defaultGroups = [
 // State
 let items = [];
 let groups = [];
-let itemMemory = {}; // Maps item text (lowercase) to group index
+let itemMemory = {}; // Maps normalized item key to { group, text }
+
+// Heuristic English singularization so "Tomatoes" and "tomato" collide on
+// the same key. The result doesn't need to be a real word, only stable:
+// singular and plural forms of the same word must map to the same string.
+function singularize(word) {
+    if (word.length <= 3) return word;
+    if (word.endsWith('ies')) return word.slice(0, -3) + 'y';   // berries -> berry
+    if (word.endsWith('ie')) return word.slice(0, -2) + 'y';    // cookie -> cooky (= cookies)
+    if (word.endsWith('shes') || word.endsWith('ches') ||
+        word.endsWith('xes') || word.endsWith('sses') ||
+        word.endsWith('oes')) return word.slice(0, -2);         // tomatoes -> tomato
+    if (word.endsWith('ss') || word.endsWith('us') ||
+        word.endsWith('is')) return word;                       // hummus, asparagus
+    if (word.endsWith('s')) return word.slice(0, -1);           // eggs -> egg
+    return word;
+}
+
+// Canonical key for an item: lowercase, collapsed whitespace, singularized
+function normalizeKey(text) {
+    return text.trim().toLowerCase().split(/\s+/).map(singularize).join(' ');
+}
 
 // Load from localStorage
 function loadData() {
@@ -19,6 +40,37 @@ function loadData() {
     items = savedItems ? JSON.parse(savedItems) : [];
     groups = savedGroups ? JSON.parse(savedGroups) : defaultGroups;
     itemMemory = savedMemory ? JSON.parse(savedMemory) : {};
+
+    // Migrate memory entries: old format mapped raw lowercase text to a group
+    // index; new format maps a normalized key to { group, text }. Normalizing
+    // also merges plural/singular duplicates from old data.
+    const migrated = {};
+    for (const [key, value] of Object.entries(itemMemory)) {
+        const entry = (value !== null && typeof value === 'object')
+            ? value
+            : { group: value === undefined ? null : value, text: key };
+        const norm = normalizeKey(entry.text);
+        const existing = migrated[norm];
+        migrated[norm] = entry;
+        if (existing && entry.group === null && existing.group !== null) {
+            migrated[norm] = { group: existing.group, text: entry.text };
+        }
+    }
+    itemMemory = migrated;
+}
+
+// Remember an item's group (null = no group) so autocomplete knows every
+// item ever added. Re-inserting refreshes the key's position, so pruning
+// drops the least recently used entries first.
+const MEMORY_LIMIT = 500;
+function rememberItem(text, groupValue) {
+    const key = normalizeKey(text);
+    delete itemMemory[key];
+    itemMemory[key] = { group: groupValue, text: text.trim() };
+    const keys = Object.keys(itemMemory);
+    for (let i = 0; i < keys.length - MEMORY_LIMIT; i++) {
+        delete itemMemory[keys[i]];
+    }
 }
 
 // Save to localStorage
@@ -139,9 +191,7 @@ function showGroupDropdown(itemIndex, wrapper) {
 // Change an item's group
 function changeItemGroup(itemIndex, groupValue) {
     items[itemIndex].group = groupValue;
-    if (groupValue !== null) {
-        itemMemory[items[itemIndex].text.trim().toLowerCase()] = groupValue;
-    }
+    rememberItem(items[itemIndex].text, groupValue);
     saveData();
     closeDropdowns();
     render();
@@ -160,7 +210,13 @@ function render() {
         checkbox.type = 'checkbox';
         checkbox.checked = item.checked;
         checkbox.id = `item-${index}`;
-        checkbox.addEventListener('change', () => toggleItem(index));
+        checkbox.addEventListener('change', () => {
+            // Update the row in place: re-rendering the whole list on
+            // every tap is sluggish on older phones
+            item.checked = checkbox.checked;
+            div.classList.toggle('checked', item.checked);
+            saveData();
+        });
 
         const label = document.createElement('label');
         label.htmlFor = `item-${index}`;
@@ -201,25 +257,30 @@ function addItem(text, groupIndex) {
     if (!text.trim()) return;
 
     const groupValue = groupIndex !== '' ? parseInt(groupIndex) : null;
-    const item = {
-        text: text.trim(),
-        checked: false,
-        group: groupValue
-    };
+    const norm = normalizeKey(text);
 
-    // Remember this item's group for future use
-    if (groupValue !== null) {
-        itemMemory[text.trim().toLowerCase()] = groupValue;
+    // Adding without a group shouldn't erase a remembered group
+    const remembered = itemMemory[norm];
+    const effectiveGroup = groupValue !== null ? groupValue
+        : (remembered ? remembered.group : null);
+    rememberItem(text, effectiveGroup);
+
+    // Already on the list (possibly as singular/plural or different case)?
+    // Revive it instead of adding a duplicate.
+    const existingIndex = items.findIndex(item => normalizeKey(item.text) === norm);
+    if (existingIndex !== -1) {
+        const existing = items.splice(existingIndex, 1)[0];
+        existing.checked = false;
+        if (groupValue !== null) existing.group = groupValue;
+        items.unshift(existing); // Move to top so the add visibly took effect
+    } else {
+        items.unshift({
+            text: text.trim(),
+            checked: false,
+            group: effectiveGroup
+        });
     }
 
-    items.unshift(item); // Add to top
-    saveData();
-    render();
-}
-
-// Toggle item checked state
-function toggleItem(index) {
-    items[index].checked = !items[index].checked;
     saveData();
     render();
 }
@@ -250,19 +311,27 @@ function handleGroupSelect() {
     }
 }
 
-// Auto-select group based on item memory
+// Auto-select group based on item memory. Only clear a selection we made
+// ourselves, so a group the user picked manually is left alone.
+let groupAutoSelected = false;
 function checkItemMemory() {
     const input = document.getElementById('newItemInput');
     const groupSelect = document.getElementById('groupSelect');
-    const text = input.value.trim().toLowerCase();
+    const text = input.value.trim();
+    const remembered = text ? itemMemory[normalizeKey(text)] : undefined;
 
-    if (text && itemMemory[text] !== undefined) {
-        groupSelect.value = itemMemory[text];
+    if (remembered !== undefined && remembered.group !== null) {
+        groupSelect.value = remembered.group;
+        groupAutoSelected = true;
+    } else if (groupAutoSelected) {
+        groupSelect.value = '';
+        groupAutoSelected = false;
     }
 }
 
-// Fuzzy matching: score how well a query matches a candidate
-// Returns 0 or negative if no meaningful match
+// Fuzzy matching: score how well a query matches a candidate.
+// Every query character must appear in the candidate, in order — otherwise
+// returns 0 (no match). Higher score = better match.
 function fuzzyScore(query, candidate) {
     const q = query.toLowerCase();
     const c = candidate.toLowerCase();
@@ -271,24 +340,19 @@ function fuzzyScore(query, candidate) {
 
     let score = 0;
     let ci = 0;
-    let matched = 0;
     let prevMatchIdx = -2;
 
     for (let qi = 0; qi < q.length; qi++) {
         const idx = c.indexOf(q[qi], ci);
-        if (idx !== -1) {
-            matched++;
-            score += 1;
-            // Consecutive character bonus
-            if (idx === prevMatchIdx + 1) score += 3;
-            // Same-position bonus
-            if (idx === qi) score += 1;
-            prevMatchIdx = idx;
-            ci = idx + 1;
-        }
+        if (idx === -1) return 0;
+        score += 1;
+        // Consecutive character bonus
+        if (idx === prevMatchIdx + 1) score += 3;
+        // Word-start bonus ("pe" ranks "peanut butter" and "frozen peas" high)
+        if (idx === 0 || c[idx - 1] === ' ') score += 2;
+        prevMatchIdx = idx;
+        ci = idx + 1;
     }
-
-    if (matched === 0) return 0;
 
     // Strong prefix bonus
     if (c.startsWith(q)) score += q.length * 5;
@@ -305,7 +369,7 @@ let autocompleteIndex = -1;
 function updateAutocomplete() {
     const input = document.getElementById('newItemInput');
     const dropdown = document.getElementById('autocompleteDropdown');
-    const text = input.value.trim().toLowerCase();
+    const text = input.value.trim();
 
     if (!text) {
         dropdown.style.display = 'none';
@@ -313,13 +377,19 @@ function updateAutocomplete() {
         return;
     }
 
-    // Fuzzy match known items, sorted by score (best first)
-    const matches = Object.keys(itemMemory)
-        .map(key => ({ key, score: fuzzyScore(text, key) }))
+    // Fuzzy match known items against both the display text and the
+    // normalized key (so "tomatoes" still finds "Tomato"). Ties break
+    // toward the most recently used entry (memory is in recency order).
+    const normText = normalizeKey(text);
+    const matches = Object.entries(itemMemory)
+        .map(([key, entry], recency) => ({
+            entry,
+            recency,
+            score: Math.max(fuzzyScore(text, entry.text), fuzzyScore(normText, key))
+        }))
         .filter(m => m.score > 0)
-        .sort((a, b) => b.score - a.score)
-        .slice(0, 6)
-        .map(m => m.key);
+        .sort((a, b) => (b.score - a.score) || (b.recency - a.recency))
+        .slice(0, 6);
 
     if (matches.length === 0) {
         dropdown.style.display = 'none';
@@ -330,13 +400,13 @@ function updateAutocomplete() {
     dropdown.innerHTML = '';
     autocompleteIndex = -1;
 
-    matches.forEach((key) => {
+    matches.forEach(({ entry }) => {
         const btn = document.createElement('button');
         btn.className = 'autocomplete-item';
 
         // Show group color dot if item has a remembered group
-        const groupIdx = itemMemory[key];
-        if (groupIdx !== undefined && groups[groupIdx]) {
+        const groupIdx = entry.group;
+        if (groupIdx !== null && groups[groupIdx]) {
             const dot = document.createElement('span');
             dot.className = 'bullet-dot';
             dot.style.backgroundColor = groups[groupIdx].color;
@@ -344,7 +414,7 @@ function updateAutocomplete() {
         }
 
         // Capitalize first letter for display
-        const displayText = key.charAt(0).toUpperCase() + key.slice(1);
+        const displayText = entry.text.charAt(0).toUpperCase() + entry.text.slice(1);
         btn.appendChild(document.createTextNode(displayText));
 
         btn.addEventListener('mousedown', (e) => {
@@ -364,8 +434,9 @@ function selectAutocomplete(text, groupIdx) {
     const dropdown = document.getElementById('autocompleteDropdown');
 
     input.value = text;
-    if (groupIdx !== undefined) {
+    if (groupIdx !== undefined && groupIdx !== null) {
         groupSelect.value = groupIdx;
+        groupAutoSelected = true;
     }
     dropdown.style.display = 'none';
     autocompleteIndex = -1;
@@ -415,9 +486,13 @@ document.getElementById('addItemForm').addEventListener('submit', (e) => {
     addItem(input.value, groupSelect.value);
     input.value = '';
     groupSelect.value = ''; // Reset group selection
+    groupAutoSelected = false;
 });
 
-document.getElementById('groupSelect').addEventListener('change', handleGroupSelect);
+document.getElementById('groupSelect').addEventListener('change', () => {
+    groupAutoSelected = false; // user picked a group themselves
+    handleGroupSelect();
+});
 
 document.getElementById('clearBtn').addEventListener('click', clearChecked);
 
