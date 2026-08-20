@@ -5,6 +5,7 @@ A minimal, mobile-friendly grocery list webapp with dark mode and store grouping
 ## Features
 
 - Add/check off items
+- Reorder the list by dragging items
 - Organize items by store with colored labels
 - Auto-remembers which store you buy each item from
 - Clear completed items
@@ -28,4 +29,5 @@ Run this after editing anything in `src/`, and commit the generated root files (
 - **Add item**: Type item name and press Enter
 - **Assign store**: Click the 🏷️ icon to optionally select a store
 - **Check off**: Click checkbox to mark as purchased
+- **Reorder**: Press an item and hold it, then move it up or down (works with a finger or a mouse)
 - **Clear**: Click 🛒 to remove all checked items

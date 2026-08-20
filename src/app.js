@@ -205,6 +205,7 @@ function render() {
     items.forEach((item, index) => {
         const div = document.createElement('div');
         div.className = `grocery-item ${item.checked ? 'checked' : ''}`;
+        div.dataset.index = index; // Read back after a drag to rebuild the order
 
         const checkbox = document.createElement('input');
         checkbox.type = 'checkbox';
@@ -251,6 +252,179 @@ function render() {
         list.appendChild(div);
     });
 }
+
+// --- Reorder by press and hold ---------------------------------------------
+// Press an item and hold it, then move it up or down. Pointer events cover
+// both touch and mouse. The hold delay keeps taps and page scrolling intact:
+// any movement before the delay cancels the press.
+
+const HOLD_DELAY = 350;      // ms of stillness that turns a press into a drag
+const HOLD_TOLERANCE = 10;   // px of movement that cancels the press
+const EDGE_ZONE = 70;        // px from a screen edge where the page scrolls
+const EDGE_SPEED = 0.25;     // px scrolled per px inside the edge zone, per frame
+
+let press = null;            // press waiting for the hold delay
+let drag = null;             // drag in progress
+let scrollFrame = 0;
+
+// Midpoint of a row in layout coordinates. Layout ignores transforms, so a
+// neighbour that is still sliding into place reports where it will land.
+function midpoint(row) {
+    return row.offsetTop + row.offsetHeight / 2;
+}
+
+// Move a row in the list, then animate it from where it used to be
+function slide(row, moveInDom) {
+    const before = row.getBoundingClientRect().top;
+    moveInDom();
+    const after = row.getBoundingClientRect().top;
+    row.style.transition = 'none';
+    row.style.transform = `translateY(${before - after}px)`;
+    requestAnimationFrame(() => {
+        row.style.transition = 'transform 0.15s ease';
+        row.style.transform = '';
+    });
+}
+
+// Keep the dragged row under the pointer and let it swap past any neighbour
+// whose midpoint it crossed
+function moveRow(clientY) {
+    const row = drag.row;
+    const wantTop = clientY - drag.grabOffset;
+
+    row.style.transform = '';
+    let shift = wantTop - row.getBoundingClientRect().top;
+    row.style.transform = `translateY(${shift}px)`;
+
+    const center = row.offsetTop + shift + row.offsetHeight / 2;
+
+    // A fast move can pass several rows, so keep swapping until it settles
+    for (let guard = 0; guard < 50; guard++) {
+        const next = row.nextElementSibling;
+        const prev = row.previousElementSibling;
+        if (next && center > midpoint(next)) slide(next, () => next.after(row));
+        else if (prev && center < midpoint(prev)) slide(prev, () => prev.before(row));
+        else break;
+        // The row kept its place on screen but changed place in the list
+        row.style.transform = '';
+        shift = wantTop - row.getBoundingClientRect().top;
+        row.style.transform = `translateY(${shift}px)`;
+    }
+}
+
+// Scroll the page when the pointer holds near the top or bottom edge
+function autoScroll() {
+    if (!drag) return;
+    const y = drag.clientY;
+    let dy = 0;
+    if (y < EDGE_ZONE) dy = (y - EDGE_ZONE) * EDGE_SPEED;
+    else if (y > window.innerHeight - EDGE_ZONE) dy = (y - window.innerHeight + EDGE_ZONE) * EDGE_SPEED;
+
+    if (dy !== 0) {
+        const before = window.scrollY;
+        window.scrollBy(0, dy);
+        if (window.scrollY !== before) moveRow(y);
+    }
+    scrollFrame = requestAnimationFrame(autoScroll);
+}
+
+function cancelPress() {
+    if (!press) return;
+    clearTimeout(press.timer);
+    press = null;
+}
+
+function startDrag(p) {
+    press = null;
+    closeDropdowns();
+
+    const rect = p.row.getBoundingClientRect();
+    drag = {
+        row: p.row,
+        pointerId: p.pointerId,
+        grabOffset: p.lastY - rect.top, // hold the row at the point it was grabbed
+        clientY: p.lastY
+    };
+
+    p.row.classList.add('dragging');
+    if (navigator.vibrate) navigator.vibrate(20);
+    try { p.row.setPointerCapture(p.pointerId); } catch (e) { /* pointer already gone */ }
+
+    moveRow(p.lastY);
+    scrollFrame = requestAnimationFrame(autoScroll);
+}
+
+// The pointer that ends a drag also fires a click, which would tick the item
+function swallowNextClick() {
+    const swallow = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        stop();
+    };
+    const stop = () => document.removeEventListener('click', swallow, true);
+    document.addEventListener('click', swallow, true);
+    setTimeout(stop, 400);
+}
+
+function endDrag() {
+    const row = drag.row;
+    cancelAnimationFrame(scrollFrame);
+    row.classList.remove('dragging');
+    row.style.transform = '';
+    drag = null;
+
+    // The DOM holds the new order; each row still knows its old position
+    const list = document.getElementById('groceryList');
+    items = Array.from(list.children).map(el => items[Number(el.dataset.index)]);
+    saveData();
+    render();
+    swallowNextClick();
+}
+
+document.getElementById('groceryList').addEventListener('pointerdown', (e) => {
+    if (e.button > 0) return; // right or middle mouse button
+    const row = e.target.closest('.grocery-item');
+    // The checkbox and the group label keep their own tap behaviour
+    if (!row || e.target.closest('input, .group-bullet, .group-dropdown')) return;
+
+    cancelPress();
+    const p = { row, pointerId: e.pointerId, startY: e.clientY, startX: e.clientX, lastY: e.clientY };
+    p.timer = setTimeout(() => startDrag(p), HOLD_DELAY);
+    press = p;
+});
+
+document.addEventListener('pointermove', (e) => {
+    if (press && e.pointerId === press.pointerId) {
+        if (Math.abs(e.clientY - press.startY) > HOLD_TOLERANCE ||
+            Math.abs(e.clientX - press.startX) > HOLD_TOLERANCE) cancelPress();
+        else press.lastY = e.clientY;
+        return;
+    }
+    if (!drag || e.pointerId !== drag.pointerId) return;
+    drag.clientY = e.clientY;
+    moveRow(e.clientY);
+});
+
+document.addEventListener('pointerup', (e) => {
+    if (press && e.pointerId === press.pointerId) cancelPress();
+    else if (drag && e.pointerId === drag.pointerId) endDrag();
+});
+
+// A cancelled pointer (the browser took over the gesture) keeps the new order
+document.addEventListener('pointercancel', (e) => {
+    if (press && e.pointerId === press.pointerId) cancelPress();
+    else if (drag && e.pointerId === drag.pointerId) endDrag();
+});
+
+// Hold the page still while a row is being dragged
+document.addEventListener('touchmove', (e) => {
+    if (drag) e.preventDefault();
+}, { passive: false });
+
+// No text selection menu on a long press
+document.addEventListener('contextmenu', (e) => {
+    if (drag || press) e.preventDefault();
+});
 
 // Add new item
 function addItem(text, groupIndex) {
